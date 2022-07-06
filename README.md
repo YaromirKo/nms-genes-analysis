@@ -1,1 +1,1 @@
-# gene-correlation-analysis
+# nms-gene-analysis
