@@ -1,0 +1,244 @@
+---
+title: "Analysis of genes with bootstrap and permutation (RD)"
+author: "Yaromir Kobikov <kobikov.yaromir@gmail.com>"
+date: "Date: `r format(Sys.time(), '%d/%m/%Y')`"
+output:
+ word_document: default
+ html_document:
+  toc: true
+  toc_float:
+   collapsed: false
+editor_options:
+ chunk_output_type: inline
+---
+
+```{r setup, include=FALSE}
+
+source("./GenesAnalysis.R")
+
+```
+
+<!-- # https://thomasleeper.com/Rcourse/Tutorials/permutationtests.html -->
+
+# Data load
+
+Hypoth [SO, UBI];
+Spinal cord [SO, UBI, Control]
+
+```{r data_load, include=FALSE}
+
+main_dir <- "."
+path_rds <- "./rds/"
+
+# check if sub directory exists 
+if (!file.exists(path_rds)) {
+  dir.create(file.path(main_dir, path_rds))
+}
+
+DESIGN <- "RD"
+
+data_Hypoth <-
+  "./data/Hypoth_SO_UBI.xlsx" %>% 
+  read_excel(.name_repair = "universal", na = c("", "NA", "NULL")) %>% 
+  mutate(Segment = "Hyp",
+         Trt = recode_factor(Operation.type, SO = 'Sh', cSMC = "UBI"),
+         Module = recode_factor(Meas..Side, L = 'lm', R = 'rm')) %>% 
+  select(-Meas..Side, -Operation.type) %>% 
+  relocate(Rat.ID, Segment, Trt, Module) %>% 
+  pivot_wider(names_from = c("Module", "Segment"),
+              values_from = !c("Rat.ID", "Module", "Segment", "Trt")) %>% 
+  mutate(Design = factor("RD")) #####
+
+data_SpinalC <-
+  "./data/SpinalC_SO_UBI_Ctrl_RD_DD.xlsx" %>%
+  read_excel(sheet = "Sheet2", .name_repair = "universal", na = c("", "NA", "NULL")) %>% 
+  # filter(Design == "RD") %>%  #####
+  mutate(Segment = "SpC",
+         Trt = recode_factor(Operation.type, SO = 'Sh', cSMC = "UBI", SMC = "UBI"),
+         Module = recode_factor(Meas..Side, L = 'lm', R = 'rm'),
+         Design = factor(Design, c("RD", "DD")) #####
+         )
+
+table(data_SpinalC$Operation.side, useNA = "ifany")
+
+data_SpinalC <- 
+  data_SpinalC %>% 
+  select(-Meas..Side, -Operation.type, -Operation.side) %>% 
+  relocate(Rat.ID, Segment, Trt, Module) %>% 
+  pivot_wider(names_from = c("Module", "Segment"),
+              values_from = !c("Rat.ID", "Module", "Segment", "Trt", "Design")) #####
+
+data_groups_all <-
+  "./data/groups.xlsx" %>%
+  read_excel(sheet = "all_groups", .name_repair = "universal", na = c("", "NA", "NULL"))
+  
+```
+
+
+```{r join_data_and_filtering, include=FALSE}
+
+data_S.H <- 
+  full_join(data_Hypoth, data_SpinalC, by=c("Rat.ID", "Trt", "Design")) %>%
+  relocate(Rat.ID, Design) %>% 
+  filter(Design == DESIGN) %>% # RD or DD design (2 reports)
+  mutate(Trt = factor(Trt)) %>% 
+  select(-Design)
+
+table(data_S.H$Rat.ID, data_S.H$Trt, useNA = "ifany")
+
+```
+
+
+```{r permutation}
+
+
+permutation <- function(df) {
+  
+  d.t <- df %>%
+    mutate(Trt = sample(Trt)) %>%
+    pivot_longer(cols = !c("Rat.ID", "Trt"),
+                 names_sep = "_",
+                 names_to = c("Gene", "Module", "Segment"),
+                 values_to = "value") %>%
+    group_by(Rat.ID, Gene, Segment) %>%
+    mutate(Module = sample(Module)) %>%
+    ungroup %>%
+    pivot_wider(names_from = Module,
+                values_from = value) %>%
+    group_by(Rat.ID, Gene) %>%
+    mutate(Segment = sample(Segment)) %>%
+    ungroup %>%
+    pivot_longer(cols = c("lm", "rm"),
+                 names_to = "Module",
+                 values_to = "value") %>%
+    pivot_wider(names_from = c("Gene", "Module", "Segment"),
+                values_from = !c("Rat.ID", "Gene", "Module", "Segment", "Trt"))
+  
+  return(d.t[ , order(names(d.t))])
+}
+
+```
+
+
+```{r correlation_core_for_bootstrapping}
+
+corByGroup <- function(df, indices, dg, verbose=FALSE) {
+
+  if(!all(indices == 1:nrow(df))) {
+    df <- permutation(df)
+  }
+
+  df <-
+    df %>%
+    pivot_longer(cols = !c("Rat.ID", "Trt"),
+                 names_sep = "_",
+                 names_to = c("Gene", "Module", "Segment"),
+                 values_to = "value")
+
+  d.net <-
+    df %>%
+    group_by(Segment) %>%
+    pivot_wider(names_from = Module, values_from = value) %>%
+    # drop_na() %>%
+    group_by(Gene, .add=TRUE) %>%
+    summarise(Net = ifelse(mean(log2(lm/rm), na.rm=TRUE) > 0, "L", "R") , .groups = "drop_last")
+
+  df <- left_join(df, d.net, by=c("Segment", "Gene"))
+
+  d.t1_cor <-
+    df %>%
+    pivot_wider(names_from = c("Segment", "Trt", "Module", "Net", "Gene"),
+                values_from = value) %>%
+    select(-Rat.ID) %>%
+    as.matrix %>%
+    cor(method = "spearman", use = "pairwise.complete.obs")
+
+  diag(d.t1_cor) <- NA
+
+  res <- rep(NA_real_, 6*nrow(dg))
+
+  for (i in 1:nrow(dg)) {
+
+    ind1.1 <- grepl(pattern = dg[i, ]$CorrMatr1.rows, x = rownames(d.t1_cor))
+    ind1.2 <- grepl(pattern = dg[i, ]$CorrMatr1.columns, x = colnames(d.t1_cor))
+
+    ind2.1 <- grepl(pattern = dg[i, ]$CorrMatr2.rows, x = rownames(d.t1_cor))
+    ind2.2 <- grepl(pattern = dg[i, ]$CorrMatr2.columns, x = colnames(d.t1_cor))
+
+    d1 <- d.t1_cor[ind1.1, ind1.2]
+    d2 <- d.t1_cor[ind2.1, ind2.2]
+  
+    res[i*6-5] <- mean(abs(d1), na.rm = TRUE)
+    res[i*6-4] <- mean(abs(d2), na.rm = TRUE)
+    res[i*6-3] <- res[i*6-5] - res[i*6-4]
+
+    res[i*6-2] <- mean(d1 > 0, na.rm = TRUE)
+    res[i*6-1] <- mean(d2 > 0, na.rm = TRUE)
+    res[i*6] <- res[i*6-2] - res[i*6-1]
+  }
+  return(res)
+}
+
+```
+
+
+```{r check, include=FALSE}
+
+colnames(data_S.H[ , order(names(data_S.H))]) == colnames(permutation(data_S.H[ , order(names(data_S.H))]))
+corByGroup(df = data_S.H, indices = 1:23, dg = data_groups_all %>% slice(1:1))
+
+```
+
+
+# Bootstrap with permutation
+
+```{r bootstrap}
+
+set.seed(1244070722)
+
+data_S.H <- data_S.H[ , order(names(data_S.H))]
+data_group <- data_groups_all
+
+
+R = 1000000 # 1M iter
+
+base_name <- "_boot_1M_6cores_all_groups_"
+
+rds_file <- paste0(path_rds, base_name, DESIGN, ".rds")
+
+
+parallel <- ifelse(Sys.info()["sysname"] == "Linux", "multicore", "snow")
+
+if(!file.exists(rds_file)) {
+  start_time <- Sys.time()
+  
+  res_boot <- boot(data = data_S.H,
+                 R = R,
+                 statistic = corByGroup,
+                 dg = data_group,
+                 parallel = parallel,
+                 ncpus = my.cores)
+  end_time <- Sys.time()
+  print(end_time - start_time)
+  
+  saveRDS(object = res_boot, file = rds_file)
+} else {
+  res_boot <- readRDS(rds_file)
+}
+
+```
+
+
+```{r test_by_index}
+
+index <- 8
+
+print(plot(res_boot, index=index))
+print(res_boot[["t0"]][index])
+print(boot.ci(res_boot, index=index, type = c("perc"), conf = 0.95))
+
+print(boot.pval(res_boot, type="perc", pval_precision = 1/R, index=index, theta_null = res_boot[["t0"]][index]))
+
+# a <- boot.ci(res_boot, index=3, type = c("norm", "perc"), conf = 0.95)
+
+```
