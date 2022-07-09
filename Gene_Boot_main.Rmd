@@ -171,9 +171,18 @@ corByGroup <- function(df, indices, dg, verbose=FALSE) {
     res[i*6-5] <- mean(abs(d1), na.rm = TRUE)
     res[i*6-4] <- mean(abs(d2), na.rm = TRUE)
     res[i*6-3] <- res[i*6-5] - res[i*6-4]
+    
+    # res[i*6-2] <- mean(d1 > 0, na.rm = TRUE)
+    # res[i*6-1] <- mean(d2 > 0, na.rm = TRUE)
+    
+    pos <- mean(d1 > 0, na.rm = TRUE)
+    neg <- mean(d1 < 0, na.rm = TRUE)
+    res[i*6-2] <- pos / (pos + neg)
+    
+    pos <- mean(d2 > 0, na.rm = TRUE)
+    neg <- mean(d2 < 0, na.rm = TRUE)
+    res[i*6-1] <- pos / (pos + neg)
 
-    res[i*6-2] <- mean(d1 > 0, na.rm = TRUE)
-    res[i*6-1] <- mean(d2 > 0, na.rm = TRUE)
     res[i*6] <- res[i*6-2] - res[i*6-1]
   }
   return(res)
@@ -199,10 +208,9 @@ set.seed(1244070722)
 data_S.H <- data_S.H[ , order(names(data_S.H))]
 data_group <- data_groups_all
 
-
 R = 1000000 # 1M iter
 
-base_name <- "_boot_1M_6cores_all_groups_"
+base_name <- paste0("_all_groups_boot_", formatter(R), "_", my.cores, "_cores_")
 
 rds_file <- paste0(path_rds, base_name, DESIGN, ".rds")
 
