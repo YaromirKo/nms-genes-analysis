@@ -6,8 +6,8 @@ require("readxl")
 require("boot")
 require("boot.pval")
 
-Sys.setenv(MAKEFLAGS = paste0("-j", min(4, parallel::detectCores() - 1)))
-my.cores <- min(6, parallel::detectCores() - 1) # leave one free core to keep system responsive
+my.cores <- min(10, parallel::detectCores() - 1) # always leave at least one free core to keep system responsive
+Sys.setenv(MAKEFLAGS = paste0("-j", my.cores))
 options(mc.cores = my.cores)
 
 theme_set(theme_light())

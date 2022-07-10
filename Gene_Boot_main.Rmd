@@ -12,33 +12,29 @@ editor_options:
  chunk_output_type: inline
 ---
 
+ToDo: Codes to accompany paper ...put BioRxiv reference for the paper... 
+
 ```{r setup, include=FALSE}
-
-source("./GenesAnalysis.R")
-
+source("GenesAnalysis.R")
 ```
 # 
 <!-- # https://thomasleeper.com/Rcourse/Tutorials/permutationtests.html -->
 
 # Data load
 
+ToDo: briefly explain what is in each of the three files
 Hypoth [SO, UBI];
 Spinal cord [SO, UBI, Control]
 
 ```{r data_load, include=FALSE}
+main_dir <- "." # path to the base folder, containing data and results
+path_rds <- "rds" # folder to store the results
+DESIGN <- "RD" # only reverse design data will be used
 
-main_dir <- "."
-path_rds <- "./rds/"
-
-# check if sub directory exists 
-if (!file.exists(path_rds)) {
-  dir.create(file.path(main_dir, path_rds))
-}
-
-DESIGN <- "RD"
+dir.create(file.path(main_dir, path_rds), showWarnings = FALSE)
 
 data_Hypoth <-
-  "./data/Hypoth_SO_UBI.xlsx" %>% 
+  file.path(main_dir,"data/Hypoth_SO_UBI.xlsx") %>% 
   read_excel(.name_repair = "universal", na = c("", "NA", "NULL")) %>% 
   mutate(Segment = "Hyp",
          Trt = recode_factor(Operation.type, SO = 'Sh', cSMC = "UBI"),
@@ -50,7 +46,7 @@ data_Hypoth <-
   mutate(Design = factor("RD")) #####
 
 data_SpinalC <-
-  "./data/SpinalC_SO_UBI_Ctrl_RD_DD.xlsx" %>%
+  file.path(main_dir,"data/SpinalC_SO_UBI_Ctrl_RD_DD.xlsx") %>%
   read_excel(sheet = "Sheet2", .name_repair = "universal", na = c("", "NA", "NULL")) %>% 
   # filter(Design == "RD") %>%  #####
   mutate(Segment = "SpC",
@@ -59,6 +55,11 @@ data_SpinalC <-
          Design = factor(Design, c("RD", "DD")) #####
          )
 
+## ToDo: if we print something, there should be at least a brief explanation. For example:
+## Sanity check: If the file is correct, this should give
+##   L    R <NA> 
+##  86   40   20 
+## How come measurement side is NA? what do we do with such data?
 table(data_SpinalC$Operation.side, useNA = "ifany")
 
 data_SpinalC <- 
@@ -69,44 +70,45 @@ data_SpinalC <-
               values_from = !c("Rat.ID", "Module", "Segment", "Trt", "Design")) #####
 
 data_groups_all <-
-  "./data/groups.xlsx" %>%
+  file.path(main_dir,"data/groups.xlsx") %>%
   read_excel(sheet = "all_groups", .name_repair = "universal", na = c("", "NA", "NULL"))
-  
 ```
 
+Join measurements for Hypothalamus and Spinal Cord
 
 ```{r join_data_and_filtering, include=FALSE}
-
 data_S.H <- 
   full_join(data_Hypoth, data_SpinalC, by=c("Rat.ID", "Trt", "Design")) %>%
   relocate(Rat.ID, Design) %>% 
   filter(Design == DESIGN) %>% # RD or DD design (2 reports)
   mutate(Trt = factor(Trt)) %>% 
   select(-Design)
-
 table(data_S.H$Rat.ID, data_S.H$Trt, useNA = "ifany")
-
 ```
 
+ToDo: A short explanation, for example:
+
+To generate null distribution we permute data 
+ - across rat IDs, which will also permute across Treatment
+ - across Module (measurements on the left vs. right side of the segment) within each individual rat
+ - across Segment (Hypothalamus vs. Spinal Cord) within each Module
 
 ```{r permutation}
-
-
 permutation <- function(df) {
   
   d.t <- df %>%
-    mutate(Trt = sample(Trt)) %>%
+    mutate(Trt = sample(Trt)) %>% # permute rat ids
     pivot_longer(cols = !c("Rat.ID", "Trt"),
                  names_sep = "_",
                  names_to = c("Gene", "Module", "Segment"),
                  values_to = "value") %>%
     group_by(Rat.ID, Gene, Segment) %>%
-    mutate(Module = sample(Module)) %>%
+    mutate(Module = sample(Module)) %>% # permute left vs. right measurement sides
     ungroup %>%
     pivot_wider(names_from = Module,
                 values_from = value) %>%
     group_by(Rat.ID, Gene) %>%
-    mutate(Segment = sample(Segment)) %>%
+    mutate(Segment = sample(Segment)) %>% # permute Hypothalamus vs. Spinal Cord
     ungroup %>%
     pivot_longer(cols = c("lm", "rm"),
                  names_to = "Module",
@@ -116,27 +118,26 @@ permutation <- function(df) {
   
   return(d.t[ , order(names(d.t))])
 }
-
 ```
 
+ToDo: brief description of the function, for example:
+
+A funtion for boot() to compute correlations and test statistics for each group.
+The first call is special, it should use observed data instead of permuted data.
+Setting Verbose=TRUE will generate plots.
 
 ```{r correlation_core_for_bootstrapping}
-
 corByGroup <- function(df, indices, dg, verbose=FALSE) {
+  if(!all(indices == 1:nrow(df))) { df <- permutation(df) }
 
-  if(!all(indices == 1:nrow(df))) {
-    df <- permutation(df)
-  }
-
-  df <-
-    df %>%
+  df <- df %>%
     pivot_longer(cols = !c("Rat.ID", "Trt"),
                  names_sep = "_",
                  names_to = c("Gene", "Module", "Segment"),
                  values_to = "value")
 
-  d.net <-
-    df %>%
+  # for each gene, compute if it belongs to L or R network
+  d.net <- df %>%
     group_by(Segment) %>%
     pivot_wider(names_from = Module, values_from = value) %>%
     # drop_na() %>%
@@ -145,8 +146,7 @@ corByGroup <- function(df, indices, dg, verbose=FALSE) {
 
   df <- left_join(df, d.net, by=c("Segment", "Gene"))
 
-  d.t1_cor <-
-    df %>%
+  d.t1_cor <- df %>%
     pivot_wider(names_from = c("Segment", "Trt", "Module", "Net", "Gene"),
                 values_from = value) %>%
     select(-Rat.ID) %>%
@@ -167,7 +167,9 @@ corByGroup <- function(df, indices, dg, verbose=FALSE) {
 
     d1 <- d.t1_cor[ind1.1, ind1.2]
     d2 <- d.t1_cor[ind2.1, ind2.2]
-  
+    
+    ## network correlation strength = magnitude of correlations, averaged across all parwise correlations
+    ## For symmetric correlation matrix each correlation is used two times, but it does not affect the average.
     res[i*6-5] <- mean(abs(d1), na.rm = TRUE)
     res[i*6-4] <- mean(abs(d2), na.rm = TRUE)
     res[i*6-3] <- res[i*6-5] - res[i*6-4]
@@ -175,6 +177,7 @@ corByGroup <- function(df, indices, dg, verbose=FALSE) {
     # res[i*6-2] <- mean(d1 > 0, na.rm = TRUE)
     # res[i*6-1] <- mean(d2 > 0, na.rm = TRUE)
     
+    ## proportion of positive correlations in the network
     pos <- mean(d1 > 0, na.rm = TRUE)
     neg <- mean(d1 < 0, na.rm = TRUE)
     res[i*6-2] <- pos / (pos + neg)
@@ -187,39 +190,34 @@ corByGroup <- function(df, indices, dg, verbose=FALSE) {
   }
   return(res)
 }
-
 ```
-
 
 ```{r check, include=FALSE}
-
+# Sanity check: columns of joint data are sorted
 colnames(data_S.H[ , order(names(data_S.H))]) == colnames(permutation(data_S.H[ , order(names(data_S.H))]))
-corByGroup(df = data_S.H, indices = 1:23, dg = data_groups_all %>% slice(1:1))
-
+# Sanity check: results for the first test
+corByGroup(df = data_S.H, indices = 1:nrow(data_S.H), dg = data_groups_all %>% slice(1:1))
 ```
-
 
 # Bootstrap with permutation
 
 ```{r bootstrap}
-
-set.seed(1244070722)
+#set.seed(1244070722)
+## to avoid question "Why do you choose this random seed?", I usually used the date
+set.seed(20220710)
 
 data_S.H <- data_S.H[ , order(names(data_S.H))]
 data_group <- data_groups_all
 
-R = 1000000 # 1M iter
+R = 1e3 # 1e6 # 1e6 permutations took about 4 days using 10 CPUs
 
-base_name <- paste0("_all_groups_boot_", formatter(R), "_", my.cores, "_cores_")
-
-rds_file <- paste0(path_rds, base_name, DESIGN, ".rds")
-
+rds_file <- file.path(main_dir, path_rds, paste0(
+  "all_groups_boot_", formatter(R), "_", my.cores, "_cores_", DESIGN, ".rds"
+))
 
 parallel <- ifelse(Sys.info()["sysname"] == "Linux", "multicore", "snow")
-
 if(!file.exists(rds_file)) {
   start_time <- Sys.time()
-  
   res_boot <- boot(data = data_S.H,
                  R = R,
                  statistic = corByGroup,
@@ -233,12 +231,9 @@ if(!file.exists(rds_file)) {
 } else {
   res_boot <- readRDS(rds_file)
 }
-
 ```
 
-
 ```{r test_by_index}
-
 index <- 8
 
 print(plot(res_boot, index=index))
@@ -248,5 +243,8 @@ print(boot.ci(res_boot, index=index, type = c("perc"), conf = 0.95))
 print(boot.pval(res_boot, type="perc", pval_precision = 1/R, index=index, theta_null = res_boot[["t0"]][index]))
 
 # a <- boot.ci(res_boot, index=3, type = c("norm", "perc"), conf = 0.95)
+```
 
+```{r}
+sessionInfo()
 ```
