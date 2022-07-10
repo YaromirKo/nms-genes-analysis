@@ -122,7 +122,7 @@ permutation <- function(df) {
 
 ToDo: brief description of the function, for example:
 
-A funtion for boot() to compute correlations and test statistics for each group.
+A function for boot() to compute correlations and test statistics for each group.
 The first call is special, it should use observed data instead of permuted data.
 Setting Verbose=TRUE will generate plots.
 
@@ -209,7 +209,7 @@ set.seed(20220710)
 data_S.H <- data_S.H[ , order(names(data_S.H))]
 data_group <- data_groups_all
 
-R = 1e3 # 1e6 # 1e6 permutations took about 4 days using 10 CPUs
+R = 1e3 # 1e6 # 1e6 permutations took about ~1.5 days using 10 CPUs
 
 rds_file <- file.path(main_dir, path_rds, paste0(
   "all_groups_boot_", formatter(R), "_", my.cores, "_cores_", DESIGN, ".rds"
