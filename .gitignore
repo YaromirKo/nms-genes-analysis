@@ -40,3 +40,5 @@ vignettes/*.pdf
 
 # Results of bootstrap
 rds/
+
+.gitignore
