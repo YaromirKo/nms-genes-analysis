@@ -129,6 +129,8 @@ Setting Verbose=TRUE will generate plots.
 ```{r correlation_core_for_bootstrapping}
 corByGroup <- function(df, indices, dg, verbose=FALSE) {
   if(!all(indices == 1:nrow(df))) { df <- permutation(df) }
+  
+  if (verbose) { buffer_plots <- list() }
 
   df <- df %>%
     pivot_longer(cols = !c("Rat.ID", "Trt"),
@@ -142,9 +144,10 @@ corByGroup <- function(df, indices, dg, verbose=FALSE) {
     pivot_wider(names_from = Module, values_from = value) %>%
     # drop_na() %>%
     group_by(Gene, .add=TRUE) %>%
-    summarise(Net = ifelse(mean(log2(lm/rm), na.rm=TRUE) > 0, "L", "R") , .groups = "drop_last")
+    summarise(Net_value = mean(log2(lm/rm), na.rm=TRUE),
+              Net = ifelse(Net_value > 0, "L", "R") , .groups = "drop_last")
 
-  df <- left_join(df, d.net, by=c("Segment", "Gene"))
+  df <- left_join(df, d.net, by=c("Segment", "Gene")) %>% select(-Net_value)
 
   d.t1_cor <- df %>%
     pivot_wider(names_from = c("Segment", "Trt", "Module", "Net", "Gene"),
@@ -168,7 +171,7 @@ corByGroup <- function(df, indices, dg, verbose=FALSE) {
     d1 <- d.t1_cor[ind1.1, ind1.2]
     d2 <- d.t1_cor[ind2.1, ind2.2]
     
-    ## network correlation strength = magnitude of correlations, averaged across all parwise correlations
+    ## network correlation strength = magnitude of correlations, averaged across all pairwise correlations
     ## For symmetric correlation matrix each correlation is used two times, but it does not affect the average.
     res[i*6-5] <- mean(abs(d1), na.rm = TRUE)
     res[i*6-4] <- mean(abs(d2), na.rm = TRUE)
@@ -202,8 +205,9 @@ corByGroup(df = data_S.H, indices = 1:nrow(data_S.H), dg = data_groups_all %>% s
 # Bootstrap with permutation
 
 ```{r bootstrap}
-#set.seed(1244070722)
-## to avoid question "Why do you choose this random seed?", I usually used the date
+# To reproduce results during parallel operation. 
+# Only for parallel = "multicore" (not available on Windows).
+RNGkind("L'Ecuyer-CMRG") # from https://cran.r-project.org/web/packages/boot/boot.pdf (14 page)
 set.seed(20220710)
 
 data_S.H <- data_S.H[ , order(names(data_S.H))]
@@ -236,7 +240,7 @@ if(!file.exists(rds_file)) {
 ```{r test_by_index}
 index <- 8
 
-print(plot(res_boot, index=index))
+# print(plot(res_boot, index=index)) # At 1e6 it takes more than 20 GB of RAM, be careful.
 print(res_boot[["t0"]][index])
 print(boot.ci(res_boot, index=index, type = c("perc"), conf = 0.95))
 
