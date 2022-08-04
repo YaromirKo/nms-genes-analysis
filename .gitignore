@@ -41,4 +41,7 @@ vignettes/*.pdf
 # Results of bootstrap
 rds/
 
+# Results of knitting
+*.docx
+
 .gitignore

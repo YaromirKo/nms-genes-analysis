@@ -217,7 +217,7 @@ data_group <- data_groups_all
 R = 1e3 # 1e6 permutations took about 18 hours using 10 CPUs
 
 rds_file <- file.path(main_dir, path_rds, paste0(
-  "all_groups_boot_", formatter(R), "_", my.cores, "_cores_", DESIGN, ".rds"
+  "all_groups_boot_", formatter(R), "_", my.cores, "_cores_", DESIGN, "_Net_Sh.rds"
 ))
 
 parallel <- ifelse(Sys.info()["sysname"] == "Linux", "multicore", "snow")
