@@ -42,3 +42,23 @@ vignettes/*.pdf
 rds/
 
 .gitignore
+
+
+# History files
+.Rhistory
+.Rapp.history
+
+# Session Data files
+.RData
+
+.gitignore
+
+
+# git update-index --assume-unchanged .gitignore
+# git update-index --no-assume-unchanged .gitignore
+
+reports/
+addition/
+
+Gene_Boot_full.Rmd
+
