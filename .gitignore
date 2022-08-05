@@ -45,11 +45,3 @@ rds/
 *.docx
 
 .gitignore
-
-# git update-index --assume-unchanged .gitignore
-# git update-index --no-assume-unchanged .gitignore
-
-reports/
-addition/
-
-Gene_Boot_full.Rmd
