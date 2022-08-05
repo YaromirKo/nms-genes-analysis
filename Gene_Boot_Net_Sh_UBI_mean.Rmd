@@ -1,5 +1,5 @@
 ---
-title: "Analysis of genes with bootstrap and permutation (RD)"
+title: "Analysis of genes with bootstrap and permutation (RD) Net [Sh, UBI] with mean"
 author: "Yaromir Kobikov <kobikov.yaromir@gmail.com>"
 date: "Date: `r format(Sys.time(), '%d/%m/%Y')`"
 output:
@@ -140,12 +140,11 @@ corByGroup <- function(df, indices, dg, verbose=FALSE) {
 
   # for each gene, compute if it belongs to L or R network
   d.net <- df %>%
-    filter(Trt == 'Sh') %>% # for tests
     group_by(Segment) %>%
     pivot_wider(names_from = Module, values_from = value) %>%
     # drop_na() %>%
     group_by(Gene, .add=TRUE) %>%
-    summarise(Net_value = median(log2(lm/rm), na.rm=TRUE), # median or mean 
+    summarise(Net_value = mean(log2(lm/rm), na.rm=TRUE), # median or mean 
               Net = ifelse(Net_value > 0, "L", "R") , .groups = "drop_last")
 
   df <- left_join(df, d.net, by=c("Segment", "Gene")) %>% select(-Net_value)
@@ -217,7 +216,7 @@ data_group <- data_groups_all
 R = 1e3 # 1e6 permutations took about 18 hours using 10 CPUs
 
 rds_file <- file.path(main_dir, path_rds, paste0(
-  "all_groups_boot_", formatter(R), "_", my.cores, "_cores_", DESIGN, "_Net_Sh.rds"
+  "all_groups_boot_", formatter(R), "_", my.cores, "_cores_", DESIGN, ".rds"
 ))
 
 parallel <- ifelse(Sys.info()["sysname"] == "Linux", "multicore", "snow")
