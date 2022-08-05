@@ -41,18 +41,10 @@ vignettes/*.pdf
 # Results of bootstrap
 rds/
 
-.gitignore
-
-
-# History files
-.Rhistory
-.Rapp.history
-
-# Session Data files
-.RData
+# Results of knitting
+*.docx
 
 .gitignore
-
 
 # git update-index --assume-unchanged .gitignore
 # git update-index --no-assume-unchanged .gitignore
@@ -61,4 +53,3 @@ reports/
 addition/
 
 Gene_Boot_full.Rmd
-
