@@ -23,7 +23,7 @@ source("GenesAnalysis.R")
 # Data load
 
 ToDo: briefly explain what is in each of the three files
-Hypoth [SO, UBI];
+Hypothalamus [SO, UBI];
 Spinal cord [SO, UBI, Control]
 
 ```{r data_load, include=FALSE}
@@ -130,7 +130,7 @@ Setting Verbose=TRUE will generate plots.
 corByGroup <- function(df, indices, dg, verbose=FALSE) {
   if(!all(indices == 1:nrow(df))) { df <- permutation(df) }
   
-  if (verbose) { buffer_plots <- list() }
+  if (verbose) { buffer <- list() }
 
   df <- df %>%
     pivot_longer(cols = !c("Rat.ID", "Trt"),
@@ -146,7 +146,10 @@ corByGroup <- function(df, indices, dg, verbose=FALSE) {
     group_by(Gene, .add=TRUE) %>%
     summarise(Net_value = mean(log2(lm/rm), na.rm=TRUE), # median or mean 
               Net = ifelse(Net_value > 0, "L", "R") , .groups = "drop_last")
-
+  
+  # collect data for report
+  if (verbose) { buffer[['Networks']] <- d.net }
+  
   df <- left_join(df, d.net, by=c("Segment", "Gene")) %>% select(-Net_value)
 
   d.t1_cor <- df %>%
@@ -171,6 +174,19 @@ corByGroup <- function(df, indices, dg, verbose=FALSE) {
     d1 <- d.t1_cor[ind1.1, ind1.2]
     d2 <- d.t1_cor[ind2.1, ind2.2]
     
+    # collect data for report
+    if (verbose) {
+      buffer[[as.character(i+1)]] <- list(
+        description = dg[i, ]$Description,
+        matr1 = d1,
+        matr2 = d2,
+        matr1.name.rows = dg[i, ]$CorrMatr1.rows,
+        matr1.name.cols = dg[i, ]$CorrMatr1.columns,
+        matr2.name.rows = dg[i, ]$CorrMatr2.rows,
+        matr2.name.cols = dg[i, ]$CorrMatr2.columns
+      )
+    }
+    
     ## network correlation strength = magnitude of correlations, averaged across all pairwise correlations
     ## For symmetric correlation matrix each correlation is used two times, but it does not affect the average.
     res[i*6-5] <- mean(abs(d1), na.rm = TRUE)
@@ -191,7 +207,8 @@ corByGroup <- function(df, indices, dg, verbose=FALSE) {
 
     res[i*6] <- res[i*6-2] - res[i*6-1]
   }
-  return(res)
+  if (!verbose) return(res)
+  else return(list(data.viz=buffer, result=res))
 }
 ```
 
@@ -202,7 +219,7 @@ colnames(data_S.H[ , order(names(data_S.H))]) == colnames(permutation(data_S.H[ 
 corByGroup(df = data_S.H, indices = 1:nrow(data_S.H), dg = data_groups_all %>% slice(1:1))
 ```
 
-# Bootstrap with permutation
+# Bootstrap with permutations
 
 ```{r bootstrap}
 # To reproduce results during parallel operation. 
@@ -249,6 +266,265 @@ print(boot.pval(res_boot, type="perc", pval_precision = 1/R, index=index, theta_
 # a <- boot.ci(res_boot, index=3, type = c("norm", "perc"), conf = 0.95)
 ```
 
-```{r}
+
+```{r CI_by_groups, include=FALSE}
+
+groups_results <- paste0("./data/groups_result_", format(Sys.time(), '%d_%m_%Y'), ".xlsx")
+
+if(!file.exists(groups_results)) {
+  tmp <- rep(NA_real_, 6*nrow(data_groups_all))
+
+  conf <- 0.95
+  
+  for (i in 1:nrow(data_groups_all)) {
+    index <- i*6
+    
+    ci <- boot.ci(res_boot, index=index - 3, type = c("perc"), conf = conf)
+    tmp[i*6-5] <- ci$percent[4]
+    tmp[i*6-4] <- ci$percent[5]
+    tmp[i*6-3] <- boot.pval(res_boot, type="perc", pval_precision = 1/R, index=index - 3, theta_null = res_boot[["t0"]][index - 3])
+
+    ci <- boot.ci(res_boot, index=index, type = c("perc"), conf = conf)
+    tmp[i*6-2] <- ci$percent[4]
+    tmp[i*6-1] <- ci$percent[5]
+    tmp[i*6] <- boot.pval(res_boot, type="perc", pval_precision = 1/R, index=index, theta_null = res_boot[["t0"]][index])
+  }
+  
+  for (index in 1:6) {
+    data_groups_all[index + 7] <- res_boot[["t0"]][seq(index, length(res_boot[["t0"]]), 6)]
+    data_groups_all[index + 13] <- tmp[seq(index, length(res_boot[["t0"]]), 6)]
+  }
+
+  data_groups_all_sorted <-
+    data_groups_all %>%
+    filter(analyze == "yes") %>%
+    select(-analyze) %>%
+    group_by(Segment) %>%
+    mutate(BH.pStr = p.adjust(pval.CorStr, method = "BH"),
+           BH.pProp = p.adjust(pval.CorProp, method = "BH"))
+  
+  write.xlsx(data_groups_all_sorted, groups_results)
+} else {
+  data_groups_all_sorted <-
+    groups_results %>%
+    read_excel(.name_repair = "universal", na = c("", "NA", "NULL"))
+}
+  
+```
+
+# Visualizing data by groups
+
+```{r list_data_by_groups, include=FALSE}
+groups <- data_groups_all %>% filter(analyze == 'yes')
+data.groups.list <- corByGroup(df = data_S.H[ , order(names(data_S.H))], indices = 1:nrow(data_S.H[ , order(names(data_S.H))]), dg = groups, verbose = TRUE)
+```
+
+```{r custome_theme, include=FALSE}
+my.theme <- function(gg, 
+                          title="", 
+                          labs_x="",
+                          labs_y="",
+                          margin_list=c(0,0,0,0),
+                          title.x.hjust=1,
+                          title.y.hjust=0.5,
+                          text.x.angle=0) {
+  return(
+    gg +
+      labs(fill = "", title = title, x=labs_x, y=labs_y) +
+      theme(
+        legend.position = "none",
+        
+        plot.title = element_text(size=14),
+        plot.margin = margin(margin_list[1], margin_list[2], margin_list[3], margin_list[4], "cm"),
+        
+        panel.grid.major = element_blank(), 
+        panel.grid.minor = element_blank(),
+        panel.border = element_rect(colour = "black", fill=NA, size=0.55),
+        panel.background = element_blank(),
+        
+        axis.ticks = element_line(size = 0.55, colour="black"),
+        axis.ticks.length.x = unit(.13, "inches"),
+        axis.ticks.length.y = unit(.13, "inches"),
+        
+        axis.title.x = element_text(size = 12, family = "Arial", hjust = title.x.hjust),
+        axis.title.y = element_text(size = 12, family = "Arial", hjust = title.y.hjust),
+        
+        axis.text = element_text(size=12, colour="black"),
+        axis.text.x = element_text(angle=text.x.angle, size=12, family = "Arial", hjust=0.5, margin = margin(t = 0.35, unit = "cm")),
+        axis.text.y = element_text(angle=0, size=12, family = "Arial", margin = margin(r = 0.2, l=0.2, unit = "cm"))
+      ) +
+      scale_fill_manual(values = my.colors)
+  )
+}
+```
+
+## (Bar) Plots of Networks by Hypothalamus and Spinal Cord
+
+```{r networks_bar_plots_hyp_spc, fig.width=6, fig.height=6}
+data <- data.groups.list$data.viz$Networks
+
+for (item in unique(data$Segment)) {
+  d.net_ <- data %>%
+    filter(Segment == item) %>% 
+    mutate(Gene = fct_reorder(Gene, desc(Net_value)))
+  name <- paste0(item, " Networks Sh UBI mean")
+  plt[[name]] <- (ggplot(d.net_, aes(x=fct_rev(Gene), y=Net_value, fill=Net)) +
+                    geom_bar(stat='identity', width=.5) +
+                    coord_flip()) %>% my.theme
+  print(plt[[name]])
+}
+```
+
+## Plots for each groups
+Heatmap, Violin, Proportions
+
+```{r custome_theme_heatmap, include=FALSE}
+my.theme.heatmap <- function(gg) {
+  return(gg +
+           scale_fill_gradientn(colours = heatmap.colors, limits = c(-1, 1), breaks = c(-1, 0, 1), expand = c(0, 0)) +
+           theme(legend.position = "top", 
+                 legend.box = "vertical",
+                 
+                 plot.title = element_text(size=14),
+                 plot.margin = margin(0, 0, 0, 0, "cm"),
+                 
+                 panel.grid.major = element_blank(), 
+                 panel.grid.minor = element_blank(),
+                 panel.border = element_blank(),
+                 panel.background = element_blank(),
+                 
+                 axis.ticks = element_blank(),
+                 
+                 axis.text = element_text(size=12, colour="black"),
+                 axis.text.x = element_text(angle=90, size=12),
+                 axis.text.y = element_text(angle=0, size=12, family = "", margin = margin(r=0.2, l=0.2, unit = "cm"))
+           )
+  )
+}
+```
+
+```{r heatmap_fun, include=FALSE}
+get_heatmap <- function(matrix, x.name, y.name) {
+  d <- matrix %>% as.data.frame() %>% rownames_to_column("rows")
+  
+  if (x.name == y.name) {
+    tmp_names <- d$rows
+    d <- subset(d, select = -rows)
+    d[lower.tri(d)] <- NA
+    d$rows <- tmp_names
+  }
+  
+  d <- d %>%
+    pivot_longer(-c(rows), names_to = "cols", values_to = "Correlation coefficient") %>% 
+    drop_na(.)
+  
+  return ((d %>% 
+    ggplot(aes(fct_rev(cols), rows)) + 
+    geom_tile(aes(fill = `Correlation coefficient`), width=1)) %>% 
+    my.theme.heatmap)
+}
+```
+
+```{r violin_proportions_plots, include=FALSE}
+get_violin_prop_plots <- function(matrx.1, matrx.2, x.name.1, y.name.1, x.name.2, y.name.2) {
+  d1 <- matrx.1 %>% as.data.frame() %>% rownames_to_column('rows')
+  d1 <- d1 %>%
+    pivot_longer(-c(rows), names_to = "cols", values_to = "Rho") %>% 
+    drop_na(.) %>%
+    mutate(groups = paste0(x.name.1, ', ', y.name.1), 
+           sign = ifelse(Rho > 0, 'pos', 'neg'))
+  
+  d2 <- matrx.2 %>% as.data.frame() %>% rownames_to_column("rows")
+  d2 <- d2 %>%
+    pivot_longer(-c(rows), names_to = "cols", values_to = "Rho") %>%
+    drop_na(.) %>%
+    mutate(groups = paste0(x.name.2, ', ', y.name.2), 
+           sign = ifelse(Rho > 0, 'pos', 'neg'))
+  
+  dd <- rbind(d1, d2)
+  
+  gg1 <- (dd %>% 
+    mutate(Rho = abs(Rho)) %>% 
+    ggplot(aes(x=groups, y=Rho, fill=groups)) +
+    geom_violin() +
+    stat_summary(fun="median", geom = "crossbar", width=0.5) +
+    scale_y_continuous(limits = c(0, 1), breaks = seq(0, 1, by = .25))) %>% 
+    my.theme(labs_y = '|Rho|')
+  
+  gg2 <- (dd %>%
+            group_by(groups, sign) %>%
+            summarise(n=n(), .groups="drop") %>%
+            ggplot(aes(fill=sign, y=n, x=groups)) + 
+            geom_bar(position="fill", stat="identity", width=.5) +
+            geom_hline(yintercept = 0.5, linetype="dashed")) %>% 
+    my.theme
+  
+  return(list(gg1, gg2))
+}
+```
+
+
+```{r plots_for_each_groups, fig.width=6, fig.height=6}
+data <- data.groups.list$data.viz
+ds <- data[2:length(data)]
+
+print.it <- FALSE
+
+help.print.fun <- function(name, plt) {
+  print(name)
+  print(plt)
+}
+
+for (i in names(ds)) {
+  
+  name <- paste0('Heatmap, ', i, ', ', ds[[i]]$description, ' Gr1, rows: ', ds[[i]]$matr1.name.rows, ', cols: ', ds[[i]]$matr1.name.cols)
+  plt[[name]] <- get_heatmap(ds[[i]]$matr1, ds[[i]]$matr1.name.rows, ds[[i]]$matr1.name.cols)
+  if (print.it) help.print.fun(name, plt[[name]])
+
+  name <- paste0('Heatmap, ', i, ', ', ds[[i]]$description, ' Gr2, rows: ', ds[[i]]$matr2.name.rows, ', cols: ', ds[[i]]$matr2.name.cols)
+  plt[[name]] <- get_heatmap(ds[[i]]$matr2, ds[[i]]$matr2.name.rows, ds[[i]]$matr2.name.cols)
+  if (print.it) help.print.fun(name, plt[[name]])
+
+  tmp <- get_violin_prop_plots(ds[[i]]$matr1, ds[[i]]$matr2,
+                               ds[[i]]$matr1.name.rows, ds[[i]]$matr1.name.cols,
+                               ds[[i]]$matr2.name.rows, ds[[i]]$matr2.name.cols)
+
+  name <- paste0(i, ', ', ds[[i]]$description,
+           ', G1 rows: ', ds[[i]]$matr1.name.rows, ', cols: ', ds[[i]]$matr1.name.cols,
+           ', G2 rows: ', ds[[i]]$matr2.name.rows, ', cols: ', ds[[i]]$matr2.name.cols)
+  
+  name.violin <- paste0('Violin, ', name)
+  plt[[name.violin]] <- tmp[[1]]
+  if (print.it) help.print.fun(name.violin, plt[[name.violin]])
+
+  name.proportion <- paste0('Proportions, ', name)
+  plt[[name.proportion]] <- tmp[[2]]
+  if (print.it) help.print.fun(name.proportion, plt[[name.proportion]])
+}
+```
+
+# Editable PowerPoint plots generated...
+
+```{r pptx, message=TRUE, warning=TRUE, include=FALSE, results='hide'}
+
+myname <- "corr_groups_Net_Sh_UBI_mean_"
+
+doc <- read_pptx()
+
+for(nm in names(plt)) {
+  doc <- doc %>%
+    add_slide(layout = "Title and Content", master = "Office Theme") %>%
+    ph_with(value = rvg::dml(ggobj = plt[[nm]]),
+          location = ph_location(width=6, height=6),
+          bg = "transparent" ) %>%
+    ph_with(value = nm,
+          location = ph_location_type(type = "title") )
+}
+
+doc %>% print(target = paste0("FIGs_", myname, format(Sys.time(), '%d_%m_%Y'), ".pptx"))
+
+```
+
+```{r session_info}
 sessionInfo()
 ```
