@@ -231,7 +231,7 @@ set.seed(20220710)
 data_S.H <- data_S.H[ , order(names(data_S.H))]
 data_group <- data_groups_all
 
-R = 1e6 # 1e6 permutations took about 18 hours using 10 CPUs
+R = 1e3 # 1e6 permutations took about 18 hours using 10 CPUs
 
 rds_file <- file.path(main_dir, path_rds, paste0(
   "all_groups_boot_", formatter(R), "_", my.cores, "_cores_", DESIGN, "_Net_Sh_median.rds"
@@ -368,7 +368,7 @@ for (item in unique(data$Segment)) {
   d.net_ <- data %>%
     filter(Segment == item) %>% 
     mutate(Gene = fct_reorder(Gene, desc(Net_value)))
-  name <- paste0(item, " Networks Sh UBI mean")
+  name <- paste0(item, " Networks Sh median")
   plt[[name]] <- (ggplot(d.net_, aes(x=fct_rev(Gene), y=Net_value, fill=Net)) +
                     geom_bar(stat='identity', width=.5) +
                     coord_flip()) %>% my.theme
