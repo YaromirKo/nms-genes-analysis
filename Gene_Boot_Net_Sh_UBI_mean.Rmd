@@ -269,7 +269,7 @@ print(boot.pval(res_boot, type="perc", pval_precision = 1/R, index=index, theta_
 
 ```{r CI_by_groups, include=FALSE}
 
-groups_results <- paste0("./data/groups_result_", format(Sys.time(), '%d_%m_%Y'), ".xlsx")
+groups_results <- paste0("./data/Net_Sh_UBI_mean_groups_result_", format(Sys.time(), '%d_%m_%Y'), ".xlsx")
 
 if(!file.exists(groups_results)) {
   tmp <- rep(NA_real_, 6*nrow(data_groups_all))
@@ -528,3 +528,4 @@ doc %>% print(target = paste0("FIGs_", myname, format(Sys.time(), '%d_%m_%Y'), "
 ```{r session_info}
 sessionInfo()
 ```
+
